@@ -3,7 +3,5 @@ fun main() {
         it.runCatching {
             initialize()
         }
-    }.getOrElse {
-        System.err.println(it.message)
-    }
+    }.getOrElse { System.err.println(it.message) }
 }

@@ -1,11 +1,12 @@
 import com.sun.jna.Library
 import com.sun.jna.Pointer
+import com.sun.jna.Structure
 import com.sun.jna.ptr.IntByReference
 import java.io.Closeable
 import java.lang.reflect.Proxy
 
 object PicoZense : Closeable {
-    const val OK = 0
+    private const val OK = 0
 
     private val native =
         with(NativeFunctions::class.java) {
@@ -17,11 +18,12 @@ object PicoZense : Closeable {
                                 emptyMap<String, NativeFunctions>())))
         }
 
-    fun initialize() {
+    fun initialize(): Int {
         require(OK == native.Ps2_Initialize()) { "initialize failed" }
         val count = IntByReference()
         require(OK == native.Ps2_GetDeviceCount(count.pointer)) { "get devices count failed" }
         require(count.value > 0) { "no device" }
+        return count.value
     }
 
     override fun close() {
@@ -37,11 +39,23 @@ object PicoZense : Closeable {
         fun Ps2_Shutdown(): Int
 
         // 获取设备数量
-        // pointer for int reference
-        fun Ps2_GetDeviceCount(pointer: Pointer): Int
+        // pDeviceCount for int*
+        fun Ps2_GetDeviceCount(pDeviceCount: Pointer): Int
+
+        // 获取设备信息
+        // pDevices for PsDeviceInfo*
+        fun Ps2_GetDeviceInfo(pDevices: Pointer, deviceIndex: Int): Int
+
+        class PsDeviceInfo : Structure() {
+            var SessionCount: Int = -1
+            var devicetype: Int = -1
+            var uri = ByteArray(256) { -1 }
+            var fw = ByteArray(50) { -1 }
+            var status: Int = -1
+        }
 
         // 打开设备
-        // pDevice for device handler
+        // pDevice for PsDeviceHandle*
         fun Ps2_OpenDevice(uri: String, pDevice: Pointer): Int
 
         // 关闭设备
