@@ -3,8 +3,8 @@ import com.sun.jna.Library
 import com.sun.jna.Pointer
 import com.sun.jna.Structure
 import com.sun.jna.Structure.FieldOrder
-import com.sun.jna.ptr.ByteByReference
 import com.sun.jna.ptr.IntByReference
+import com.sun.jna.ptr.LongByReference
 import java.io.Closeable
 import java.lang.reflect.Proxy
 
@@ -29,40 +29,33 @@ object PicoZense : Closeable {
         return count.value
     }
 
-    operator fun get(index: Int): Pair<String, String> {
+    operator fun get(index: Int): PicoCamera {
         val info = PsDeviceInfo()
         require(OK == native.Ps2_GetDeviceInfo(info, index))
-        val (name, code) =
-            info.uri.takeWhile { it != 0.toByte() }.toByteArray().toString(Charsets.US_ASCII).split(':')
-        return name to code
-    }
+        val uri = info.uri.takeWhile { it != 0.toByte() }.toByteArray().toString(Charsets.US_ASCII)
 
-    fun open(uri: String): Byte {
-        val handler = ByteByReference()
+        val handler = LongByReference()
         require(OK == native.Ps2_OpenDevice(uri, handler.pointer))
-        return handler.value
-    }
-
-    fun close(handler: Byte) {
-        val pointer = ByteByReference()
-        pointer.value = handler
-        require(OK == native.Ps2_CloseDevice(pointer.pointer))
-    }
-
-    fun start(handler: Byte) {
-        val pointer = ByteByReference()
-        pointer.value = handler
-        require(OK == native.Ps2_StartStream(pointer.pointer, 0))
-    }
-
-    fun stop(handler: Byte) {
-        val pointer = ByteByReference()
-        pointer.value = handler
-        require(OK == native.Ps2_StopStream(pointer.pointer, 0))
+        return PicoCamera(uri.split(':').first(), handler.value)
     }
 
     override fun close() {
         native.Ps2_Shutdown()
+    }
+
+    /** 相机资源 */
+    class PicoCamera(
+        val deviceType: String,
+        private val handler: Long
+    ) : Closeable {
+        init {
+            require(OK == native.Ps2_StartStream(handler, 0))
+        }
+
+        override fun close() {
+            native.Ps2_StopStream(handler, 0)
+            native.Ps2_CloseDevice(handler)
+        }
     }
 
     @Suppress("FunctionName")
@@ -111,14 +104,14 @@ object PicoZense : Closeable {
 
         // 关闭设备
         // device for device handler
-        fun Ps2_CloseDevice(device: Pointer): Int
+        fun Ps2_CloseDevice(device: Long): Int
 
         // 启动数据流
         // device for device handler
-        fun Ps2_StartStream(device: Pointer, sessionIndex: Int): Int
+        fun Ps2_StartStream(device: Long, sessionIndex: Int): Int
 
         // 停止数据流
         // device for device handler
-        fun Ps2_StopStream(device: Pointer, sessionIndex: Int): Int
+        fun Ps2_StopStream(device: Long, sessionIndex: Int): Int
     }
 }
