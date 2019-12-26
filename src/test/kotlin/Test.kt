@@ -2,8 +2,10 @@ fun main() {
     PicoZense.use {
         it.runCatching {
             initialize()
-            val camera = this[0]
-            println("type: ${camera.deviceType}")
+            this[0].use { camera ->
+                println("type: ${camera.deviceType}")
+                while (true) camera.next()
+            }
         }
     }.getOrElse { it.printStackTrace() }
 }
