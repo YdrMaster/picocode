@@ -79,10 +79,6 @@ object PicoZense : Closeable {
             native.Ps2_StopStream(handler, 0)
             native.Ps2_CloseDevice(handler)
         }
-
-        private companion object {
-            fun Short.toUnsigned() = if (this < 0) 0x10000 + this else this.toInt()
-        }
     }
 
     @Suppress("FunctionName")
@@ -147,12 +143,18 @@ object PicoZense : Closeable {
         // device for device handler
         fun Ps2_ReadNextFrame(device: Long, sessionIndex: Int, pFrameReady: PsFrameReady): Int
 
+        @FieldOrder("bytes")
+        class AnyStruct(length: Int) : Structure() {
+            @JvmField
+            var bytes = ByteArray(length)
+        }
+
         @FieldOrder("frameIndex", "frameType",
                     "pixelFormat", "imuFrameNo",
                     "pFrameData", "dataLen",
                     "exposureTime", "depthRange",
                     "width", "height")
-        class PsFrame : Structure() {
+        class PsFrame : Structure(ALIGN_NONE) {
             @JvmField
             var frameIndex: Int = -1
             @JvmField
@@ -162,7 +164,7 @@ object PicoZense : Closeable {
             @JvmField
             var imuFrameNo: Byte = -1
             @JvmField
-            var pFrameData: Pointer = Pointer(-1)
+            var pFrameData: Pointer = Pointer(0)
             @JvmField
             var dataLen: Int = -1
             @JvmField
