@@ -55,4 +55,6 @@ allprojects {
 dependencies {
     implementation("net.java.dev.jna", "jna", "+")
     implementation("org.bytedeco", "opencv-platform", "+")
+    implementation("com.google.zxing", "core", "+")
+    implementation("gov.nist.math", "jama", "+")
 }
