@@ -5,6 +5,8 @@ import com.sun.jna.Structure
 import com.sun.jna.Structure.FieldOrder
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.LongByReference
+import org.bytedeco.opencv.global.opencv_core.CV_8UC3
+import org.bytedeco.opencv.opencv_core.Mat
 import java.io.Closeable
 import java.lang.reflect.Proxy
 import kotlin.experimental.and
@@ -53,26 +55,23 @@ object PicoZense : Closeable {
             require(OK == native.Ps2_StartStream(handler, 0))
         }
 
-        fun next(): Int? {
+        fun next(): Mat? {
             val ready = PsFrameReady()
-            native.Ps2_ReadNextFrame(handler, 0, ready)
-                .takeIf { it != OK }
-                ?.let {
-                    println(it)
-                    return null
-                }
+            native
+                .Ps2_ReadNextFrame(handler, 0, ready)
+                .takeIf { it == OK }
+            ?: return null
 
             if ((ready.byte and 0b0100) == 0.toByte()) return null
 
             val frame = PsFrame()
-            native.Ps2_GetFrame(handler, 0, 3, frame)
-                .takeIf { it != OK }
-                ?.let {
-                    println(it)
-                    return null
-                }
-            println(frame)
-            return frame.frameIndex
+            native
+                .Ps2_GetFrame(handler, 0, 3, frame)
+                .takeIf { it == OK }
+            ?: return null
+            val data = frame.pFrameData.getByteArray(0, frame.dataLen)
+            return Mat(frame.height.toInt(), frame.width.toInt(), CV_8UC3)
+                .apply { data().put(*data) }
         }
 
         override fun close() {
@@ -142,12 +141,6 @@ object PicoZense : Closeable {
         // 读取下一帧
         // device for device handler
         fun Ps2_ReadNextFrame(device: Long, sessionIndex: Int, pFrameReady: PsFrameReady): Int
-
-        @FieldOrder("bytes")
-        class AnyStruct(length: Int) : Structure() {
-            @JvmField
-            var bytes = ByteArray(length)
-        }
 
         @FieldOrder("frameIndex", "frameType",
                     "pixelFormat", "imuFrameNo",
