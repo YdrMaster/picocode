@@ -7,17 +7,15 @@ import org.bytedeco.opencv.opencv_core.Mat
 
 @ObsoleteCoroutinesApi
 fun main() = runBlocking<Unit>(Dispatchers.Default) {
+    require(PicoZense.deviceCount > 0) { "Please plugin the camera." }
     // 等待 Pico 初始化
     val waiting = launch {
-        print("pico initializing")
+        print("Pico initializing")
         while (true) {
             print('.')
             delay(800L)
         }
     }
-    // 等待设备上线
-    while (PicoZense.deviceCount <= 0)
-        delay(1000L)
     // 处理
     PicoZense.use { zense ->
         zense.runCatching {
@@ -25,13 +23,13 @@ fun main() = runBlocking<Unit>(Dispatchers.Default) {
             open {
                 rgbResolution = R1920_1080
             }.use { camera ->
-                waiting.cancelAndJoin()
-                println()
-                println("type: ${camera.deviceType}")
                 // 处理图像
                 actor<Mat>(capacity = 1) {
                     for (rgb in this) PicoProcess.process(rgb)
                 }.apply {
+                    waiting.cancelAndJoin()
+                    println()
+                    println("Camera opened, type: ${camera.deviceType}")
                     while (true) camera.nextRgb()?.let { send(it) }
                 }
             }
