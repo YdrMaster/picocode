@@ -18,10 +18,7 @@ import static org.bytedeco.opencv.global.opencv_imgcodecs.imread;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imwrite;
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 
-
 public class PicoProcess {
-    private static Mat qrBinary;
-
     public static void test() {
         Mat src = imread("C:\\Users\\user\\Documents\\GitHub\\picocode\\pic\\writer1577435455394.jpg");
         QRRecognize(src);
@@ -29,18 +26,15 @@ public class PicoProcess {
     }
 
     public static void process(@NotNull Mat src) {
-
-
         imshow(" ", src);
         waitKey(2);
-
     }
 
-    public static void QRRecognize(Mat src) {
+    private static void QRRecognize(Mat src) {
         long startTime = System.currentTimeMillis();    //获取开始时间
         Mat qrGray = new Mat();
         cvtColor(src, qrGray, COLOR_BGR2GRAY);
-        qrBinary = new Mat(qrGray.size(), CV_8U);
+        Mat qrBinary = new Mat(qrGray.size(), CV_8U);
         threshold(qrGray, qrBinary, 50, 255, THRESH_OTSU | THRESH_BINARY);
         imwrite("qrBinary.jpg", qrBinary);
         MatVector list = new MatVector();
@@ -82,9 +76,7 @@ public class PicoProcess {
                 blockLabel[3] = dsOut[3];
                 blockConfid.add(blockLabel);
             }
-
         }
-
 
         if (blockConfid.size() <= 1) {
             System.out.println("Without QR");
@@ -136,13 +128,13 @@ public class PicoProcess {
 //                continue;
 //            }
             Point[] qrQuaCor = getQuaCorner(list.get(ints[0]));
-            for (int i = 0; i < qrQuaCor.length; i++) {
-                System.out.println(qrQuaCor[i].x() + " " + qrQuaCor[i].y());
+            assert qrQuaCor != null;
+            for (Point point : qrQuaCor) {
+                System.out.println(point.x() + " " + point.y());
             }
 //            qrCode.add(perspectiveTran(qrQuaCor));//
 //            String qrInfo = deCode(qrCode.get(num1));
 //            num1++;
-            assert qrQuaCor != null;
             line(src, qrQuaCor[0], qrQuaCor[1], color, 4, LINE_AA, 0);
             line(src, qrQuaCor[1], qrQuaCor[3], color, 4, LINE_AA, 0);
             line(src, qrQuaCor[3], qrQuaCor[2], color, 4, LINE_AA, 0);
@@ -162,7 +154,7 @@ public class PicoProcess {
         imwrite("D:\\Users\\user\\OpenCV_test\\src\\QR\\QRDetect\\qrNew.jpg", src);
     }
 
-    public static Point[] getQuaCorner(Mat pointOfContour) {
+    private static Point[] getQuaCorner(Mat pointOfContour) {
         /*
         p0    p2
         |   / |
@@ -181,7 +173,7 @@ public class PicoProcess {
         for (int i = 0; i < pointOfContour.rows() / 2 + 1; i++) {
             for (int j = pointOfContour.rows() / 2; j < pointOfContour.rows() - 1; j++) {
                 double lentemp = Math.sqrt(Math.pow(pointOfContour.ptr(i, 0).getInt(0) - pointOfContour.ptr(j, 0).getInt(0), 2) +
-                        Math.pow(pointOfContour.ptr(i, 0).getInt(4) - pointOfContour.ptr(j, 0).getInt(4), 2));
+                    Math.pow(pointOfContour.ptr(i, 0).getInt(4) - pointOfContour.ptr(j, 0).getInt(4), 2));
                 if (lentemp > len13) {
                     len13 = lentemp;
                     itemp = i;
@@ -209,7 +201,6 @@ public class PicoProcess {
             }
             corPoint[1][0] = pointOfContour.ptr(k22, 0).getInt(0);
             corPoint[1][1] = pointOfContour.ptr(k22, 0).getInt(4);
-
 
             double area123temp = Math.abs(((corPoint[0][0] - corPoint[1][0]) * (corPoint[2][1] - corPoint[1][1]) - (corPoint[2][0] - corPoint[1][0]) * (corPoint[0][1] - corPoint[1][1])));
             if (area123temp > area123) {
@@ -284,7 +275,7 @@ public class PicoProcess {
         return null;
     }
 
-    public static BufferedImage toBufferedImage(Mat matrix) {
+    private static BufferedImage toBufferedImage(Mat matrix) {
         int bufferSize = matrix.channels() * matrix.cols() * matrix.rows();
         byte[] buffer = new byte[bufferSize];
         matrix.data().get(buffer);
