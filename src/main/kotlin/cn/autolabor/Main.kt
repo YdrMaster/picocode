@@ -1,12 +1,13 @@
 package cn.autolabor
 
-import cn.autolabor.PicoZense.PicoCamera.RGBResolution.R1920_1080
+import cn.autolabor.PicoZense.PicoCamera.RGBResolution.R1280_720
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.actor
 import org.bytedeco.opencv.opencv_core.Mat
 
 @ObsoleteCoroutinesApi
 fun main() = runBlocking<Unit>(Dispatchers.Default) {
+    PicoProcess.test()
     require(PicoZense.deviceCount > 0) { "Please plugin the camera." }
     // 等待 Pico 初始化
     val waiting = launch {
@@ -21,7 +22,7 @@ fun main() = runBlocking<Unit>(Dispatchers.Default) {
         zense.runCatching {
             // 打开相机设备
             open {
-                rgbResolution = R1920_1080
+                rgbResolution = R1280_720
             }.use { camera ->
                 // 处理图像
                 actor<Mat>(capacity = 1) {
