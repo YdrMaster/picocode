@@ -53,6 +53,7 @@ allprojects {
 
 // 主项目依赖项
 dependencies {
+    implementation("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.3.3")
     implementation("net.java.dev.jna", "jna", "+")
     implementation("org.bytedeco", "opencv-platform", "+")
     implementation("com.google.zxing", "core", "+")

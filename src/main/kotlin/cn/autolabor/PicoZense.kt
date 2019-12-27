@@ -1,4 +1,8 @@
-import PicoZense.NativeFunctions.*
+package cn.autolabor
+
+import cn.autolabor.PicoZense.NativeFunctions.*
+import cn.autolabor.PicoZense.PicoCamera.RGBResolution
+import cn.autolabor.PicoZense.PicoCamera.RGBResolution.R640_360
 import com.sun.jna.Library
 import com.sun.jna.Pointer
 import com.sun.jna.Structure
@@ -11,51 +15,73 @@ import java.io.Closeable
 import java.lang.reflect.Proxy
 import kotlin.experimental.and
 
-object PicoZense : Closeable {
+/** cn.autolabor.PicoZense kotlin 驱动 */
+internal object PicoZense : Closeable {
     private const val OK = 0
 
-    private val native =
-        with(NativeFunctions::class.java) {
+    // 检索底层库
+    private val native by lazy {
+        with(PicoZense.NativeFunctions::class.java) {
             cast(Proxy.newProxyInstance(
                 classLoader,
                 arrayOf(this),
                 Library.Handler("picozense_api",
                                 this,
                                 emptyMap<String, NativeFunctions>())))
+        }.apply { require(OK == Ps2_Initialize()) { "initialize failed" } }
+    }
+
+    // 获取设备数量
+    val deviceCount: Int
+        get() {
+            val count = IntByReference()
+            require(OK == native.Ps2_GetDeviceCount(count.pointer)) { "get devices count failed" }
+            return count.value
         }
 
-    fun initialize(): Int {
-        require(OK == native.Ps2_Initialize()) { "initialize failed" }
-        val count = IntByReference()
-        require(OK == native.Ps2_GetDeviceCount(count.pointer)) { "get devices count failed" }
-        require(count.value > 0) { "no device" }
-        return count.value
-    }
-
-    operator fun get(index: Int): PicoCamera {
-        val info = PsDeviceInfo()
-        require(OK == native.Ps2_GetDeviceInfo(info, index))
-        val uri = info.uri.takeWhile { it != 0.toByte() }.toByteArray().toString(Charsets.US_ASCII)
-
-        val handler = LongByReference()
-        require(OK == native.Ps2_OpenDevice(uri, handler.pointer))
-        return PicoCamera(uri.split(':').first(), handler.value)
-    }
+    fun open(block: CameraConfig.() -> Unit = {}) =
+        PicoZense.CameraConfig.build(block)
 
     override fun close() {
         native.Ps2_Shutdown()
     }
 
+    class CameraConfig private constructor() {
+        var index: Int = 0
+        var rgbResolution: RGBResolution = R640_360
+
+        companion object {
+            fun build(block: CameraConfig.() -> Unit = {}): PicoCamera {
+                val config = CameraConfig().apply(block)
+
+                val info = PsDeviceInfo()
+                require(OK == native.Ps2_GetDeviceInfo(info, config.index))
+                val uri = info.uri.takeWhile { it != 0.toByte() }.toByteArray().toString(Charsets.US_ASCII)
+
+                val handler = LongByReference()
+                require(OK == native.Ps2_OpenDevice(uri, handler.pointer))
+                return PicoCamera(uri.split(':').first(),
+                                  handler.value,
+                                  config.rgbResolution)
+            }
+        }
+    }
+
     /** 相机资源 */
     class PicoCamera(
         val deviceType: String,
-        private val handler: Long
+        private val handler: Long,
+
+        rgbResolution: RGBResolution
     ) : Closeable {
         init {
-            require(OK == native.Ps2_StartStream(handler, 0))
+            native.apply {
+                require(OK == Ps2_StartStream(handler, 0))
+                require(OK == Ps2_SetRGBResolution(handler, 0, rgbResolution.value))
+            }
         }
 
-        fun next(): Mat? {
+        fun nextRgb(): Mat? {
             val ready = PsFrameReady()
             native
                 .Ps2_ReadNextFrame(handler, 0, ready)
@@ -77,6 +103,13 @@ object PicoZense : Closeable {
         override fun close() {
             native.Ps2_StopStream(handler, 0)
             native.Ps2_CloseDevice(handler)
+        }
+
+        enum class RGBResolution(val value: Int) {
+            R1920_1080(0),
+            R1280_720(1),
+            R640_480(2),
+            R640_360(3)
         }
     }
 
@@ -136,6 +169,17 @@ object PicoZense : Closeable {
             var r1: Byte = -1
             @JvmField
             var r2: Byte = -1
+        }
+
+        // 设置 RGB 分辨率
+        // device for device handler
+        fun Ps2_SetRGBResolution(device: Long, sessionIndex: Int, resolution: Int): Int
+
+        enum class PsResolution(val value: Int) {
+            R1920_1080(0),
+            R1280_720(1),
+            R640_480(2),
+            R640_360(3)
         }
 
         // 读取下一帧
