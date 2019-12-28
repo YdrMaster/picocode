@@ -11,7 +11,7 @@ import java.awt.image.DataBufferByte;
 import java.util.Arrays;
 import java.util.*;
 
-import static org.bytedeco.opencv.global.opencv_core.CV_8U;
+import static org.bytedeco.opencv.global.opencv_core.inRange;
 import static org.bytedeco.opencv.global.opencv_highgui.imshow;
 import static org.bytedeco.opencv.global.opencv_highgui.waitKey;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imread;
@@ -19,31 +19,42 @@ import static org.bytedeco.opencv.global.opencv_imgcodecs.imwrite;
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 
 public class PicoProcess {
-    public static void test() {
-        Mat src = imread("C:\\Users\\user\\Documents\\GitHub\\picocode\\pic\\writer1577435455394.jpg");
-        QRRecognize(src);
-        waitKey();
-    }
+    private final static Mat hsvBlackL;
+    private final static Mat hsvBlackH;
 
     public static void process(@NotNull Mat src) {
         imshow(" ", src);
         waitKey(2);
     }
 
+    static {
+        hsvBlackL = new Mat(new double[]{0, 0, 0});
+        hsvBlackH = new Mat(new double[]{180, 255, 46});
+    }
+
+    private static void testShow(Mat mat) {
+        imshow("test", mat);
+        waitKey();
+    }
+
+    public static void test() {
+        QRRecognize(imread("test_qr_picture.jpg"));
+    }
+
     private static void QRRecognize(Mat src) {
-        long startTime = System.currentTimeMillis();    //获取开始时间
-        Mat qrGray = new Mat();
-        cvtColor(src, qrGray, COLOR_BGR2GRAY);
-        Mat qrBinary = new Mat(qrGray.size(), CV_8U);
-        threshold(qrGray, qrBinary, 50, 255, THRESH_OTSU | THRESH_BINARY);
-        imwrite("qrBinary.jpg", qrBinary);
+        // 计时
+        long startTime = System.currentTimeMillis();
+        // 二值化
+        Mat qrBinary = binary(src);
+        // 找轮廓
         MatVector list = new MatVector();
         Mat hierarchy = new Mat();
         findContours(qrBinary, list, hierarchy, RETR_TREE, CHAIN_APPROX_NONE);
         int[][] tree = Utils.parseHierarchy(hierarchy);
-        Mat qrContour = new Mat(qrBinary.size(), qrBinary.type());
+        //求各轮廓中心
+        Mat qrContour = qrBinary.clone();
         List<Moments> mu = new ArrayList<>();
-        List<double[]> mc = new ArrayList<>();  //求各轮廓中心
+        List<double[]> mc = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
             mu.add(moments(list.get(i)));
             double[] center = new double[]{mu.get(i).m10() / mu.get(i).m00(), mu.get(i).m10() / mu.get(i).m00()};
@@ -152,6 +163,22 @@ public class PicoProcess {
         imshow("QRContours", qrContour);
         waitKey(2);
         imwrite("D:\\Users\\user\\OpenCV_test\\src\\QR\\QRDetect\\qrNew.jpg", src);
+    }
+
+    // 二值化
+    private static Mat binary(Mat src) {
+        // 原版 先转灰度
+        // Mat gray = new Mat();
+        // Mat dst = new Mat();
+        // cvtColor(src, gray, COLOR_BGR2GRAY);
+        // threshold(gray, dst, 50, 255, THRESH_OTSU | THRESH_BINARY);
+        // 直接在 HSV 色域阈值化
+        Mat hsv = new Mat();
+        Mat dst = new Mat();
+        cvtColor(src, hsv, COLOR_BGR2HSV);
+        inRange(hsv, hsvBlackL, hsvBlackH, dst);
+        testShow(dst);
+        return dst;
     }
 
     private static Point[] getQuaCorner(Mat pointOfContour) {
