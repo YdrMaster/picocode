@@ -3,6 +3,7 @@ package cn.autolabor;
 import Jama.Matrix;
 import com.google.zxing.*;
 import com.google.zxing.common.HybridBinarizer;
+import org.bytedeco.opencv.global.opencv_imgproc;
 import org.bytedeco.opencv.opencv_core.*;
 import org.jetbrains.annotations.NotNull;
 
@@ -10,6 +11,8 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.Arrays;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 import static org.bytedeco.opencv.global.opencv_core.inRange;
 import static org.bytedeco.opencv.global.opencv_highgui.imshow;
@@ -19,17 +22,16 @@ import static org.bytedeco.opencv.global.opencv_imgcodecs.imwrite;
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 
 public class PicoProcess {
-    private final static Mat hsvBlackL;
-    private final static Mat hsvBlackH;
+    private final static Mat hsvBlackL = new Mat(new double[]{0, 0, 0});
+    private final static Mat hsvBlackH = new Mat(new double[]{180, 255, 46});
 
     public static void process(@NotNull Mat src) {
         imshow(" ", src);
         waitKey(2);
     }
 
-    static {
-        hsvBlackL = new Mat(new double[]{0, 0, 0});
-        hsvBlackH = new Mat(new double[]{180, 255, 46});
+    public static void test() {
+        QRRecognize(imread("test_qr_picture.jpg"));
     }
 
     private static void testShow(Mat mat) {
@@ -37,42 +39,37 @@ public class PicoProcess {
         waitKey();
     }
 
-    public static void test() {
-        QRRecognize(imread("test_qr_picture.jpg"));
-    }
-
     private static void QRRecognize(Mat src) {
         // 计时
         long startTime = System.currentTimeMillis();
         // 二值化
         Mat qrBinary = binary(src);
+        // TODO 需要进一步预处理，滤波？
         // 找轮廓
         MatVector list = new MatVector();
         Mat hierarchy = new Mat();
         findContours(qrBinary, list, hierarchy, RETR_TREE, CHAIN_APPROX_NONE);
         int[][] tree = Utils.parseHierarchy(hierarchy);
-        //求各轮廓中心
-        Mat qrContour = qrBinary.clone();
-        List<Moments> mu = new ArrayList<>();
-        List<double[]> mc = new ArrayList<>();
-        for (int i = 0; i < list.size(); i++) {
-            mu.add(moments(list.get(i)));
-            double[] center = new double[]{mu.get(i).m10() / mu.get(i).m00(), mu.get(i).m10() / mu.get(i).m00()};
-            mc.add(center);
-        }
+        // 求各轮廓中心
+        List<Point2d> mc =
+            LongStream
+                .range(0, list.size())
+                .mapToObj(list::get)
+                .map(opencv_imgproc::moments)
+                .map(m -> new Point2d(m.m10() / m.m00(), m.m01() / m.m00()))
+                .collect(Collectors.toList());
+        //根据特征块特征，获取所有特征块索引和二维码边框索引
         List<int[]> blockConfid = new ArrayList<>();
-        //根据特征块特征，获取所有特征块索引 和 二维码边框索引
+        Mat qrContour = qrBinary.clone();
         for (int k = 0; k < list.size(); k++) {
             double area2 = contourArea(list.get(k));
-            if (area2 <= 50 || area2 >= Math.pow(Math.min(src.rows(), src.cols()), 2) * 30.0 / 9.0 / 49.0) {
-                continue;
-            }
+            if (area2 <= 50 || area2 >= Math.pow(Math.min(src.rows(), src.cols()), 2) * 30.0 / 9.0 / 49.0) continue;
             drawContours(qrContour, list, k, new Scalar(255, 255, 255, 0), 1, LINE_AA, hierarchy, Integer.MAX_VALUE, new Point());
-
-            if (tree[k][2] == -1 || tree[k][3] == -1) {
-                continue;
-            }
-            Matrix centroid = new Matrix(new double[][]{{mc.get(k)[0], mc.get(k)[1], 1}, {mc.get(tree[k][3])[0], mc.get(tree[k][3])[1], 1}, {mc.get(tree[k][3])[0], mc.get(tree[k][3])[1], 1}});
+            if (tree[k][2] == -1 || tree[k][3] == -1) continue;
+            Matrix centroid = new Matrix(new double[][]{
+                {mc.get(k).x(), mc.get(k).y(), 1},
+                {mc.get(tree[k][3]).x(), mc.get(tree[k][3]).y(), 1},
+                {mc.get(tree[k][3]).x(), mc.get(tree[k][3]).y(), 1}});
             int[] blockLabel = new int[4];
             double area1 = contourArea(list.get(tree[k][3]));
             double area3 = contourArea(list.get(tree[k][2]));
@@ -89,9 +86,7 @@ public class PicoProcess {
             }
         }
 
-        if (blockConfid.size() <= 1) {
-            System.out.println("Without QR");
-        }
+        if (blockConfid.size() <= 1) System.out.println("Without QR");
         // 收集所有二维码边框，获得图中二维码数量
         int outLabelTemp = -1;
         List<Integer> outLabel = new ArrayList<>();
@@ -105,20 +100,16 @@ public class PicoProcess {
         // 所有特征块索引归类
         int[][] outAll = new int[outLabel.size()][4];
         List<Mat> qrCode = new ArrayList<>();
-        for (int i = 0; i < outLabel.size(); i++) {
-            outAll[i][0] = outLabel.get(i);
-        }
+        for (int i = 0; i < outLabel.size(); i++) outAll[i][0] = outLabel.get(i);
         //归类
         int[] num = new int[outLabel.size()];
-        for (int[] ints : blockConfid) {
-            for (int i1 = 0; i1 < outLabel.size(); i1++) {
+        for (int[] ints : blockConfid)
+            for (int i1 = 0; i1 < outLabel.size(); i1++)
                 if (ints[3] == outLabel.get(i1)) {
                     outAll[i1][num[i1] + 1] = ints[2];
                     num[i1]++;
                     break;
                 }
-            }
-        }
         // 画出二维码外边框 和 特征块最外层边框
         int num1 = 0;
         for (int[] ints : outAll) {//getQuaCorner是得到外框四角坐标，perspectiveTran是二维码的透视校正，deCode是二维码解码
@@ -127,9 +118,8 @@ public class PicoProcess {
             Random rd = new Random();
             System.out.println("QR!");
             Scalar color = new Scalar(255, 0, 0, 0);
-            for (int i = 1; i < 4; i++) {
+            for (int i = 1; i < 4; i++)
                 drawContours(src, list, ints[i], color, 1, LINE_AA, hierarchy, Integer.MAX_VALUE, new Point());
-            }
 
             double area4 = contourArea(list.get(ints[0]));
             double area31 = contourArea(list.get(ints[1]));
@@ -140,9 +130,7 @@ public class PicoProcess {
 //            }
             Point[] qrQuaCor = getQuaCorner(list.get(ints[0]));
             assert qrQuaCor != null;
-            for (Point point : qrQuaCor) {
-                System.out.println(point.x() + " " + point.y());
-            }
+            for (Point point : qrQuaCor) System.out.println(point.x() + " " + point.y());
 //            qrCode.add(perspectiveTran(qrQuaCor));//
 //            String qrInfo = deCode(qrCode.get(num1));
 //            num1++;
@@ -166,7 +154,8 @@ public class PicoProcess {
     }
 
     // 二值化
-    private static Mat binary(Mat src) {
+    @NotNull
+    private static Mat binary(@NotNull Mat src) {
         // 原版 先转灰度
         // Mat gray = new Mat();
         // Mat dst = new Mat();
@@ -190,14 +179,12 @@ public class PicoProcess {
         p1    p3
          */
 
-        if (pointOfContour.rows() < 4) {
-            return null;
-        }
+        if (pointOfContour.rows() < 4) return null;
         int[][] corPoint = new int[4][2];
         double len13 = 0.0;
         int itemp = 0;
         int jtemp = 0;
-        for (int i = 0; i < pointOfContour.rows() / 2 + 1; i++) {
+        for (int i = 0; i < pointOfContour.rows() / 2 + 1; i++)
             for (int j = pointOfContour.rows() / 2; j < pointOfContour.rows() - 1; j++) {
                 double lentemp = Math.sqrt(Math.pow(pointOfContour.ptr(i, 0).getInt(0) - pointOfContour.ptr(j, 0).getInt(0), 2) +
                     Math.pow(pointOfContour.ptr(i, 0).getInt(4) - pointOfContour.ptr(j, 0).getInt(4), 2));
@@ -206,26 +193,19 @@ public class PicoProcess {
                     itemp = i;
                     jtemp = j;
                 }
-
             }
-
-        }
         corPoint[0][0] = pointOfContour.ptr(itemp, 0).getInt(0);
         corPoint[0][1] = pointOfContour.ptr(itemp, 0).getInt(4);
         corPoint[2][0] = pointOfContour.ptr(jtemp, 0).getInt(0);
         corPoint[2][1] = pointOfContour.ptr(jtemp, 0).getInt(4);
-
 
         double area123 = 0.0;
         int k2temp = 0;
         int k22;
         for (int k2 = jtemp; k2 < itemp + pointOfContour.rows(); k2++) {
 
-            if (k2 >= pointOfContour.rows()) {
-                k22 = k2 - pointOfContour.rows();
-            } else {
-                k22 = k2;
-            }
+            if (k2 >= pointOfContour.rows()) k22 = k2 - pointOfContour.rows();
+            else k22 = k2;
             corPoint[1][0] = pointOfContour.ptr(k22, 0).getInt(0);
             corPoint[1][1] = pointOfContour.ptr(k22, 0).getInt(4);
 
@@ -259,9 +239,7 @@ public class PicoProcess {
         java.util.Arrays.sort(corPoint, 0, 2, Comparator.comparingInt(o -> o[1]));
         Arrays.sort(corPoint, 2, 4, Comparator.comparingInt(o -> o[1]));
         Point[] corPointp = new Point[4];
-        for (int i = 0; i < 4; i++) {
-            corPointp[i] = new Point(corPoint[i][0], corPoint[i][1]);
-        }
+        for (int i = 0; i < 4; i++) corPointp[i] = new Point(corPoint[i][0], corPoint[i][1]);
 //        System.out.println(Arrays.deepToString(corPointp));
         return corPointp;
 
@@ -313,11 +291,10 @@ public class PicoProcess {
         return image;
     }
 
-    public static void light(org.opencv.core.Mat src, float alpha, float beta) {
-
+    private static void light(org.opencv.core.Mat src, float alpha, float beta) {
         int channal = src.channels();
         double[] pixel;
-        for (int i = 0, rlength = src.rows(); i < rlength; i++) {
+        for (int i = 0, rlength = src.rows(); i < rlength; i++)
             for (int j = 0, clen = src.cols(); j < clen; j++) {
                 pixel = src.get(i, j).clone();
                 if (channal == 3) {
@@ -325,10 +302,7 @@ public class PicoProcess {
                     pixel[1] = (pixel[1] - beta) * alpha;
                     pixel[2] = (pixel[2] - beta) * alpha;
                     src.put(i, j, pixel);
-                } else {
-                    src.put(i, j, (pixel[0] - beta) * alpha);
-                }
+                } else src.put(i, j, (pixel[0] - beta) * alpha);
             }
-        }
     }
 }
