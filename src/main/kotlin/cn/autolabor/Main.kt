@@ -7,7 +7,6 @@ import org.bytedeco.opencv.opencv_core.Mat
 
 @ObsoleteCoroutinesApi
 fun main() = runBlocking<Unit>(Dispatchers.Default) {
-    PicoProcess.test()
     require(PicoZense.deviceCount > 0) { "Please plugin the camera." }
     // 等待 Pico 初始化
     val waiting = launch {

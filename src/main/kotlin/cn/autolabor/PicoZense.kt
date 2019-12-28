@@ -21,7 +21,7 @@ internal object PicoZense : Closeable {
 
     // 检索底层库
     private val native by lazy {
-        with(PicoZense.NativeFunctions::class.java) {
+        with(NativeFunctions::class.java) {
             cast(Proxy.newProxyInstance(
                 classLoader,
                 arrayOf(this),
@@ -40,7 +40,7 @@ internal object PicoZense : Closeable {
         }
 
     fun open(block: CameraConfig.() -> Unit = {}) =
-        PicoZense.CameraConfig.build(block)
+        CameraConfig.build(block)
 
     override fun close() {
         native.Ps2_Shutdown()
@@ -174,13 +174,6 @@ internal object PicoZense : Closeable {
         // 设置 RGB 分辨率
         // device for device handler
         fun Ps2_SetRGBResolution(device: Long, sessionIndex: Int, resolution: Int): Int
-
-        enum class PsResolution(val value: Int) {
-            R1920_1080(0),
-            R1280_720(1),
-            R640_480(2),
-            R640_360(3)
-        }
 
         // 读取下一帧
         // device for device handler
