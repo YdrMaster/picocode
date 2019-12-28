@@ -1,8 +1,9 @@
 package cn.autolabor
 
+import cn.autolabor.MarkTree.Companion.build
 import org.bytedeco.opencv.opencv_core.Mat
 
-fun parseHierarchy(hierarchy: Mat): IndexTree {
+fun parseHierarchy(hierarchy: Mat): MarkTree<Int> {
     // 获取序号序列
     val indices = 0 until hierarchy.cols()
     // 获取亲代序号
@@ -14,6 +15,5 @@ fun parseHierarchy(hierarchy: Mat): IndexTree {
         hierarchy.ptr(0, c).getInt(12)
     }
     // 组织兄弟结构
-    val struct = indices.groupBy(parents::get)
-    TODO()
+    return build(-1, indices.groupBy(parents::get))
 }
