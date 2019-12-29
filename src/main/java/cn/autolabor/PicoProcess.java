@@ -3,7 +3,6 @@ package cn.autolabor;
 import Jama.Matrix;
 import com.google.zxing.*;
 import com.google.zxing.common.HybridBinarizer;
-import org.bytedeco.opencv.global.opencv_imgproc;
 import org.bytedeco.opencv.opencv_core.*;
 import org.jetbrains.annotations.NotNull;
 
@@ -11,10 +10,9 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.Arrays;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.LongStream;
 
-import static org.bytedeco.opencv.global.opencv_core.inRange;
+import static cn.autolabor.Utils.binary;
+import static cn.autolabor.Utils.center;
 import static org.bytedeco.opencv.global.opencv_highgui.imshow;
 import static org.bytedeco.opencv.global.opencv_highgui.waitKey;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imread;
@@ -22,21 +20,19 @@ import static org.bytedeco.opencv.global.opencv_imgcodecs.imwrite;
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 
 public class PicoProcess {
-    private final static Mat hsvBlackL = new Mat(new double[]{0, 0, 0});
-    private final static Mat hsvBlackH = new Mat(new double[]{180, 255, 46});
-
     public static void process(@NotNull Mat src) {
         imshow(" ", src);
-        waitKey(2);
+        waitKey(1);
     }
 
     public static void test() {
         QRRecognize(imread("test_qr_picture.jpg"));
+        waitKey();
     }
 
-    private static void testShow(Mat mat) {
+    static void testShow(Mat mat) {
         imshow("test", mat);
-        waitKey();
+        waitKey(100);
     }
 
     private static void QRRecognize(Mat src) {
@@ -46,44 +42,43 @@ public class PicoProcess {
         Mat qrBinary = binary(src);
         // TODO 需要进一步预处理，滤波？
         // 找轮廓
-        MatVector list = new MatVector();
+        MatVector contours = new MatVector();
         Mat hierarchy = new Mat();
-        findContours(qrBinary, list, hierarchy, RETR_TREE, CHAIN_APPROX_NONE);
+        findContours(qrBinary, contours, hierarchy, RETR_TREE, CHAIN_APPROX_NONE);
         int[][] tree = Utils.parseHierarchy(hierarchy);
+        // 准备使用树结构替代四向树表
+        MarkTree<Integer> markTree = FunctionsKt.parseHierarchy(hierarchy);
         // 求各轮廓中心
-        List<Point2d> mc =
-            LongStream
-                .range(0, list.size())
-                .mapToObj(list::get)
-                .map(opencv_imgproc::moments)
-                .map(m -> new Point2d(m.m10() / m.m00(), m.m01() / m.m00()))
-                .collect(Collectors.toList());
+        List<Point2d> mc = center(contours);
         //根据特征块特征，获取所有特征块索引和二维码边框索引
         List<int[]> blockConfid = new ArrayList<>();
         Mat qrContour = qrBinary.clone();
-        for (int k = 0; k < list.size(); k++) {
-            double area2 = contourArea(list.get(k));
-            if (area2 <= 50 || area2 >= Math.pow(Math.min(src.rows(), src.cols()), 2) * 30.0 / 9.0 / 49.0) continue;
-            drawContours(qrContour, list, k, new Scalar(255, 255, 255, 0), 1, LINE_AA, hierarchy, Integer.MAX_VALUE, new Point());
-            if (tree[k][2] == -1 || tree[k][3] == -1) continue;
+        for (int k = 0; k < contours.size(); k++) {
+            // next brother | previous brother | first child | parent
+            int firstChild = tree[k][2];
+            int parent = tree[k][3];
+            // 先排除孤立的轮廓（既无子轮廓，也无父轮廓）
+            if (firstChild == -1 || parent == -1) continue;
+            // 再按面积过滤
+            double area2 = contourArea(contours.get(k));
+            if (area2 <= 50 || Math.pow(Math.min(src.rows(), src.cols()), 2) * 30.0 / 9.0 / 49.0 <= area2) continue;
+            drawContours(qrContour, contours, k, new Scalar(255, 255, 255, 0), 1, LINE_AA, hierarchy, Integer.MAX_VALUE, new Point());
+
             Matrix centroid = new Matrix(new double[][]{
                 {mc.get(k).x(), mc.get(k).y(), 1},
-                {mc.get(tree[k][3]).x(), mc.get(tree[k][3]).y(), 1},
-                {mc.get(tree[k][3]).x(), mc.get(tree[k][3]).y(), 1}});
-            int[] blockLabel = new int[4];
-            double area1 = contourArea(list.get(tree[k][3]));
-            double area3 = contourArea(list.get(tree[k][2]));
+                {mc.get(parent).x(), mc.get(parent).y(), 1},
+                {mc.get(parent).x(), mc.get(parent).y(), 1}});
+            double area1 = contourArea(contours.get(tree[k][3]));
+            double area3 = contourArea(contours.get(tree[k][2]));
             double ratio1 = area1 / area2;
             double ratio2 = area2 / area3;
 
-            if (ratio1 <= 64.0 / 25.0 && ratio1 >= 34.0 / 25.0 && ratio2 >= 16.0 / 9.0 && ratio2 <= 34.0 / 9.0 && Math.abs(centroid.det()) <= 1) {
-                blockLabel[1] = k;
-                blockLabel[2] = tree[k][3];
-                blockLabel[0] = tree[k][2];
-                int[] dsOut = tree[blockLabel[2]];
-                blockLabel[3] = dsOut[3];
-                blockConfid.add(blockLabel);
-            }
+            if (ratio1 <= 64.0 / 25.0
+                && ratio1 >= 34.0 / 25.0
+                && ratio2 >= 16.0 / 9.0
+                && ratio2 <= 34.0 / 9.0
+                && Math.abs(centroid.det()) <= 1
+            ) blockConfid.add(new int[]{firstChild, k, parent, tree[parent][3]});
         }
 
         if (blockConfid.size() <= 1) System.out.println("Without QR");
@@ -119,16 +114,16 @@ public class PicoProcess {
             System.out.println("QR!");
             Scalar color = new Scalar(255, 0, 0, 0);
             for (int i = 1; i < 4; i++)
-                drawContours(src, list, ints[i], color, 1, LINE_AA, hierarchy, Integer.MAX_VALUE, new Point());
+                drawContours(src, contours, ints[i], color, 1, LINE_AA, hierarchy, Integer.MAX_VALUE, new Point());
 
-            double area4 = contourArea(list.get(ints[0]));
-            double area31 = contourArea(list.get(ints[1]));
-            double area32 = contourArea(list.get(ints[2]));
-            double area33 = contourArea(list.get(ints[3]));
+            double area4 = contourArea(contours.get(ints[0]));
+            double area31 = contourArea(contours.get(ints[1]));
+            double area32 = contourArea(contours.get(ints[2]));
+            double area33 = contourArea(contours.get(ints[3]));
 //            if (area4 > 15.0 * Math.max(Math.max(area31, area32), area33)) {
 //                continue;
 //            }
-            Point[] qrQuaCor = getQuaCorner(list.get(ints[0]));
+            Point[] qrQuaCor = getQuaCorner(contours.get(ints[0]));
             assert qrQuaCor != null;
             for (Point point : qrQuaCor) System.out.println(point.x() + " " + point.y());
 //            qrCode.add(perspectiveTran(qrQuaCor));//
@@ -151,23 +146,6 @@ public class PicoProcess {
         imshow("QRContours", qrContour);
         waitKey(2);
         imwrite("D:\\Users\\user\\OpenCV_test\\src\\QR\\QRDetect\\qrNew.jpg", src);
-    }
-
-    // 二值化
-    @NotNull
-    private static Mat binary(@NotNull Mat src) {
-        // 原版 先转灰度
-        // Mat gray = new Mat();
-        // Mat dst = new Mat();
-        // cvtColor(src, gray, COLOR_BGR2GRAY);
-        // threshold(gray, dst, 50, 255, THRESH_OTSU | THRESH_BINARY);
-        // 直接在 HSV 色域阈值化
-        Mat hsv = new Mat();
-        Mat dst = new Mat();
-        cvtColor(src, hsv, COLOR_BGR2HSV);
-        inRange(hsv, hsvBlackL, hsvBlackH, dst);
-        testShow(dst);
-        return dst;
     }
 
     private static Point[] getQuaCorner(Mat pointOfContour) {
