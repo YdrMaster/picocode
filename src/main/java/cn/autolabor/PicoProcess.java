@@ -30,12 +30,13 @@ public class PicoProcess {
         waitKey();
     }
 
-    static void testShow(Mat mat) {
-        imshow("test", mat);
-        waitKey(100);
+    static void testShow(@NotNull Mat mat) {
+//        imshow("test", mat);
+//        imwrite("test.bmp", mat);
+//        waitKey();
     }
 
-    private static void QRRecognize(Mat src) {
+    private static void QRRecognize(@NotNull Mat src) {
         // 计时
         long startTime = System.currentTimeMillis();
         // 二值化
@@ -53,34 +54,41 @@ public class PicoProcess {
         //根据特征块特征，获取所有特征块索引和二维码边框索引
         List<int[]> blockConfid = new ArrayList<>();
         Mat qrContour = qrBinary.clone();
+        // 每个点按最小 2x2 = 4 考虑，中环至少 5x5x4 = 100
+        final double minArea = 100;
+        // 外环 = (7x3)^2，中环 = 5^2，中环/外环 = 25/441
+        final double maxArea = Math.pow(Math.min(src.rows(), src.cols()), 2) * 25 / 441;
         for (int k = 0; k < contours.size(); k++) {
-            // next brother | previous brother | first child | parent
-            int firstChild = tree[k][2];
-            int parent = tree[k][3];
-            // 先排除孤立的轮廓（既无子轮廓，也无父轮廓）
-            if (firstChild == -1 || parent == -1) continue;
+            // final int next = tree[k][0];
+            // final int prior = tree[k][1];
+            final int firstChild = tree[k][2];
+            final int parent = tree[k][3];
+            // 先排除孤立的轮廓
+            if (firstChild < 0 || parent < 0) continue;
+            final int uncle0 = tree[parent][0];
+            final int uncle1 = tree[parent][1];
+            final int grand = tree[parent][3];
+            if ((uncle0 < 0 && uncle1 < 0) || grand < 0) continue;
             // 再按面积过滤
-            double area2 = contourArea(contours.get(k));
-            if (area2 <= 50 || Math.pow(Math.min(src.rows(), src.cols()), 2) * 30.0 / 9.0 / 49.0 <= area2) continue;
-            drawContours(qrContour, contours, k, new Scalar(255, 255, 255, 0), 1, LINE_AA, hierarchy, Integer.MAX_VALUE, new Point());
-
+            double area = contourArea(contours.get(k));
+            if (area < minArea || maxArea < area) continue;
+            // 求环面积比
+            double
+                // 试图提高可读性
+                // childLevel = contourArea(contours.get(firstChild)) / 9,
+                // level = area / 25,
+                // parentLevel = contourArea(contours.get(parent)) / 49,
+                ratio1 = contourArea(contours.get(parent)) / area,
+                ratio2 = area / contourArea(contours.get(firstChild));
             Matrix centroid = new Matrix(new double[][]{
                 {mc.get(k).x(), mc.get(k).y(), 1},
                 {mc.get(parent).x(), mc.get(parent).y(), 1},
                 {mc.get(parent).x(), mc.get(parent).y(), 1}});
-            double area1 = contourArea(contours.get(tree[k][3]));
-            double area3 = contourArea(contours.get(tree[k][2]));
-            double ratio1 = area1 / area2;
-            double ratio2 = area2 / area3;
-
-            if (ratio1 <= 64.0 / 25.0
-                && ratio1 >= 34.0 / 25.0
-                && ratio2 >= 16.0 / 9.0
-                && ratio2 <= 34.0 / 9.0
+            if (34.0 / 25.0 <= ratio1 && ratio1 <= 64.0 / 25.0
+                && 16.0 / 9.0 <= ratio2 && ratio2 <= 34.0 / 9.0
                 && Math.abs(centroid.det()) <= 1
-            ) blockConfid.add(new int[]{firstChild, k, parent, tree[parent][3]});
+            ) blockConfid.add(new int[]{firstChild, k, parent, grand});
         }
-
         if (blockConfid.size() <= 1) System.out.println("Without QR");
         // 收集所有二维码边框，获得图中二维码数量
         int outLabelTemp = -1;

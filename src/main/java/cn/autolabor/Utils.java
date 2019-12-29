@@ -18,8 +18,8 @@ import static org.bytedeco.opencv.global.opencv_imgproc.COLOR_BGR2HSV;
 import static org.bytedeco.opencv.global.opencv_imgproc.cvtColor;
 
 class Utils {
-    private final static Mat hsvBlackL = new Mat(new double[]{0, 0, 0});
-    private final static Mat hsvBlackH = new Mat(new double[]{180, 255, 46});
+    private final static Mat hsvBlackL = new Mat(new double[]{0, 0, 144});
+    private final static Mat hsvBlackH = new Mat(new double[]{180, 255, 255});
 
     static int[][] parseHierarchy(Mat hierarchy) {
         int[][] result = new int[hierarchy.cols()][4];
@@ -40,10 +40,12 @@ class Utils {
         // cvtColor(src, gray, COLOR_BGR2GRAY);
         // threshold(gray, dst, 50, 255, THRESH_OTSU | THRESH_BINARY);
         // 直接在 HSV 色域阈值化
+        // 效果不是很一样，也许是阈值选择的问题，灰度图更锐利，有少量噪点，hsv 会产生圆角，噪点少
         Mat hsv = new Mat();
         Mat dst = new Mat();
         cvtColor(src, hsv, COLOR_BGR2HSV);
         inRange(hsv, hsvBlackL, hsvBlackH, dst);
+        testShow(hsv);
         testShow(dst);
         return dst;
     }
