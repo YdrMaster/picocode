@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.Arrays;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static cn.autolabor.Utils.binary;
 import static cn.autolabor.Utils.center;
@@ -48,7 +49,12 @@ public class PicoProcess {
         findContours(qrBinary, contours, hierarchy, RETR_TREE, CHAIN_APPROX_NONE);
         int[][] tree = Utils.parseHierarchy(hierarchy);
         // 准备使用树结构替代四向树表
-        MarkTree<Integer> markTree = FunctionsKt.parseHierarchy(hierarchy);
+        List<ValuedTree<Mat>> valuedTree =
+            FunctionsKt
+                .buildTree(hierarchy)
+                .stream()
+                .map(it -> it.map(contours::get))
+                .collect(Collectors.toList());
         // 求各轮廓中心
         List<Point2d> mc = center(contours);
         //根据特征块特征，获取所有特征块索引和二维码边框索引
@@ -56,7 +62,7 @@ public class PicoProcess {
         Mat qrContour = qrBinary.clone();
         // 每个点按最小 2x2 = 4 考虑，中环至少 5x5x4 = 100
         final double minArea = 100;
-        // 外环 = (7x3)^2，中环 = 5^2，中环/外环 = 25/441
+        // 整体 = (7x3)^2，中环 = 5^2，中环/整体 = 25/441
         final double maxArea = Math.pow(Math.min(src.rows(), src.cols()), 2) * 25 / 441;
         for (int k = 0; k < contours.size(); k++) {
             // final int next = tree[k][0];
