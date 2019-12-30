@@ -2,11 +2,11 @@ package cn.autolabor
 
 import cn.autolabor.ValuedTree.Branch
 import cn.autolabor.ValuedTree.Companion.build
+import cn.autolabor.ValuedTree.Leaf
 import org.bytedeco.opencv.global.opencv_core
 import org.bytedeco.opencv.global.opencv_highgui.imshow
 import org.bytedeco.opencv.global.opencv_highgui.waitKey
 import org.bytedeco.opencv.global.opencv_imgproc
-import org.bytedeco.opencv.global.opencv_imgproc.drawContours
 import org.bytedeco.opencv.opencv_core.Mat
 import org.bytedeco.opencv.opencv_core.MatVector
 import org.bytedeco.opencv.opencv_core.Scalar
@@ -39,32 +39,36 @@ internal fun process(mat: Mat) {
         hierarchy,
         opencv_imgproc.RETR_TREE,
         opencv_imgproc.CHAIN_APPROX_NONE)
-    buildForest(hierarchy)
-        .asSequence()
-        .flatMap {
-            it.map { i -> contours.get(i.toLong()) }
-                .flattenAsSequence()
-        }
-        // 外框结构特征
-        .ofType<Branch<Mat>>()
-        // 外框轮廓特征
-        .filter { (border, _) -> border.rows() >= minCount0 }
-        // 外环轮廓特征
-        .mapNotNull { (border, children) ->
-            children
-                .ofType<Branch<Mat>>()
-                .filter { (outer, _) -> border.rows().toDouble() / outer.rows() in range0 }
-                .takeIf { it.size >= 3 }
-                ?.let { Branch(border, it) }
-        }
-        // 画图
-        .onEach { (border, children) ->
-            drawContours(mat, MatVector(border), -1, COLOR_R)
-            for (outer in children)
-                drawContours(mat, MatVector(outer.value), -1, COLOR_G)
-        }
-        .count()
-        .let(::println)
+
+    val candidates =
+        buildForest(hierarchy)
+            .asSequence()
+            .flatMap {
+                it.map { i -> contours.get(i.toLong()) }
+                    .flattenAsSequence()
+            }
+            // 外框结构特征
+            .ofType<Branch<Mat>>()
+            // 外框轮廓特征
+            .filter { (border, _) -> border.rows() >= minCount0 }
+            // 定位点轮廓特征
+            .mapNotNull { (border, outers) ->
+                outers.ofType<Branch<Mat>>()
+                    .filter { (outer, _) -> border.rows().toDouble() / outer.rows() in range0 }
+                    .takeIf { it.size >= 3 }
+                    ?.mapNotNull { (outer, mediums) ->
+                        mediums.ofType<Branch<Mat>>()
+                            .singleOrNull { outer.rows().toDouble() / it.value.rows() in range1 }
+                            ?.let { (medium, inners) ->
+                                inners
+                                    .singleOrNull { medium.rows().toDouble() / it.value.rows() in range2 }
+                                    ?.let { Branch(medium, listOf(Leaf(it.value))) }
+                            }
+                            ?.let { Branch(outer, listOf(it)) }
+                    }
+                    ?.let { Branch(border, it) }
+            }
+            .toList()
     testShow(mat)
 }
 
@@ -89,8 +93,6 @@ private fun binary(src: Mat): Mat { // 原版 先转灰度
     val dst = Mat()
     opencv_imgproc.cvtColor(src, hsv, opencv_imgproc.COLOR_BGR2HSV)
     opencv_core.inRange(hsv, hsvBlackL, hsvBlackH, dst)
-    PicoProcess.testShow(hsv)
-    PicoProcess.testShow(dst)
     return dst
 }
 
@@ -109,6 +111,13 @@ private fun buildForest(hierarchy: Mat): List<ValuedTree<Int>> {
     val groups = indices.groupBy(parents::get)
     // 组织兄弟结构
     return groups[-1]?.map { build(it, groups) } ?: emptyList()
+}
+
+private fun List<ValuedTree<Mat>>.ratioCheck(
+    parent: Mat,
+    ratioRange: ClosedFloatingPointRange<Double>
+) = ofType<Branch<Mat>>().filter { (outer, _) ->
+    parent.rows().toDouble() / outer.rows() in ratioRange
 }
 
 private inline fun <reified U : Any>
