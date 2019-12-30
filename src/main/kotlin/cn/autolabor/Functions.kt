@@ -53,11 +53,7 @@ internal fun process(mat: Mat) {
         .mapNotNull { (border, children) ->
             children
                 .ofType<Branch<Mat>>()
-                .mapNotNull { child -> child as? Branch }
-                .filter { child ->
-                    val ratio = border.rows().toDouble() / child.value.rows()
-                    ratio in range0
-                }
+                .filter { (outer, _) -> border.rows().toDouble() / outer.rows() in range0 }
                 .takeIf { it.size >= 3 }
                 ?.let { Branch(border, it) }
         }
@@ -74,7 +70,7 @@ internal fun process(mat: Mat) {
 
 private fun testShow(mat: Mat) {
     imshow("test", mat)
-//        imwrite("test.bmp", mat);
+//  imwrite("test.bmp", mat);
     waitKey()
 }
 
