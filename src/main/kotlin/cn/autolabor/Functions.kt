@@ -7,6 +7,7 @@ import org.bytedeco.opencv.global.opencv_core
 import org.bytedeco.opencv.global.opencv_highgui.imshow
 import org.bytedeco.opencv.global.opencv_highgui.waitKey
 import org.bytedeco.opencv.global.opencv_imgproc
+import org.bytedeco.opencv.global.opencv_imgproc.drawContours
 import org.bytedeco.opencv.opencv_core.Mat
 import org.bytedeco.opencv.opencv_core.MatVector
 import org.bytedeco.opencv.opencv_core.Scalar
@@ -41,23 +42,20 @@ internal fun process(mat: Mat) {
         opencv_imgproc.CHAIN_APPROX_NONE)
 
     val candidates =
-        buildForest(hierarchy)
-            .asSequence()
-            .flatMap {
-                it.map { i -> contours.get(i.toLong()) }
-                    .flattenAsSequence()
-            }
-            // 外框结构特征
+        buildForest(hierarchy).asSequence()
+            // 展平
+            .flatMap { it.map { i -> contours.get(i.toLong()) }.flattenAsSequence() }
             .ofType<Branch<Mat>>()
             // 外框轮廓特征
             .filter { (border, _) -> border.rows() >= minCount0 }
             // 定位点轮廓特征
             .mapNotNull { (border, outers) ->
-                outers.ofType<Branch<Mat>>()
+                outers
+                    .asTypedSequence<Branch<Mat>>()
                     .filter { (outer, _) -> border.rows().toDouble() / outer.rows() in range0 }
-                    .takeIf { it.size >= 3 }
-                    ?.mapNotNull { (outer, mediums) ->
-                        mediums.ofType<Branch<Mat>>()
+                    .mapNotNull { (outer, mediums) ->
+                        mediums
+                            .asTypedSequence<Branch<Mat>>()
                             .singleOrNull { outer.rows().toDouble() / it.value.rows() in range1 }
                             ?.let { (medium, inners) ->
                                 inners
@@ -66,9 +64,12 @@ internal fun process(mat: Mat) {
                             }
                             ?.let { Branch(outer, listOf(it)) }
                     }
+                    .takeIf { it.size >= 3 }
                     ?.let { Branch(border, it) }
             }
             .toList()
+    candidates.asSequence().flatMap { it.flattenAsSequence() }
+        .forEach { drawContours(mat, MatVector(it.value), -1, COLOR_R) }
     testShow(mat)
 }
 
@@ -82,19 +83,12 @@ private val hsvBlackL = Mat(0.0, 0.0, 144.0)
 private val hsvBlackH = Mat(180.0, 255.0, 255.0)
 
 // 二值化
-private fun binary(src: Mat): Mat { // 原版 先转灰度
-    // Mat gray = new Mat();
-    // Mat dst = new Mat();
-    // cvtColor(src, gray, COLOR_BGR2GRAY);
-    // threshold(gray, dst, 50, 255, THRESH_OTSU | THRESH_BINARY);
-    // 直接在 HSV 色域阈值化
-    // 效果不是很一样，也许是阈值选择的问题，灰度图更锐利，有少量噪点，hsv 会产生圆角，噪点少
-    val hsv = Mat()
-    val dst = Mat()
-    opencv_imgproc.cvtColor(src, hsv, opencv_imgproc.COLOR_BGR2HSV)
-    opencv_core.inRange(hsv, hsvBlackL, hsvBlackH, dst)
-    return dst
-}
+private fun binary(src: Mat) =
+    Mat().also { dst ->
+        val hsv = Mat()
+        opencv_imgproc.cvtColor(src, hsv, opencv_imgproc.COLOR_BGR2HSV)
+        opencv_core.inRange(hsv, hsvBlackL, hsvBlackH, dst)
+    }
 
 // 从四向链表构造树
 private fun buildForest(hierarchy: Mat): List<ValuedTree<Int>> {
@@ -113,17 +107,10 @@ private fun buildForest(hierarchy: Mat): List<ValuedTree<Int>> {
     return groups[-1]?.map { build(it, groups) } ?: emptyList()
 }
 
-private fun List<ValuedTree<Mat>>.ratioCheck(
-    parent: Mat,
-    ratioRange: ClosedFloatingPointRange<Double>
-) = ofType<Branch<Mat>>().filter { (outer, _) ->
-    parent.rows().toDouble() / outer.rows() in ratioRange
-}
-
 private inline fun <reified U : Any>
     Sequence<*>.ofType() =
     mapNotNull { it as? U }
 
 private inline fun <reified U : Any>
-    Iterable<*>.ofType() =
+    Iterable<*>.asTypedSequence() =
     mapNotNull { it as? U }
