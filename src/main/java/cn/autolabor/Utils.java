@@ -18,8 +18,8 @@ import static org.bytedeco.opencv.global.opencv_imgproc.COLOR_BGR2HSV;
 import static org.bytedeco.opencv.global.opencv_imgproc.cvtColor;
 
 class Utils {
-    private final static Mat hsvBlackL = new Mat(new double[]{0, 0, 144});
-    private final static Mat hsvBlackH = new Mat(new double[]{180, 255, 255});
+    private final static Mat hsvBlackL = new Mat(.0, 0, 144);
+    private final static Mat hsvBlackH = new Mat(180.0, 255, 255);
 
     static int[][] parseHierarchy(Mat hierarchy) {
         int[][] result = new int[hierarchy.cols()][4];
