@@ -26,13 +26,12 @@ sealed class ValuedTree<T> {
         override fun flattenAsSequence() =
             sequence {
                 yield(this@Branch)
-                for (child in children)
-                    yieldAll(children.asSequence())
+                yieldAll(children.asSequence().flatMap { it.flattenAsSequence() })
             }
     }
 
     companion object {
-        // 构建带值多叉树
+        /** 从链表建树 */
         fun <T> build(
             root: T,
             struct: Map<T, List<T>>
@@ -41,5 +40,21 @@ sealed class ValuedTree<T> {
                 ?.map { build(it, struct) }
                 ?.let { Branch(root, it) }
             ?: Leaf(root)
+
+        /** 建树 */
+        fun <T> tree(value: T, vararg children: ValuedTree<T>) =
+            children
+                .toList()
+                .takeUnless(List<*>::isEmpty)
+                ?.let { Branch(value, it) }
+            ?: Leaf(value)
+
+        /** 建树 */
+        fun <T> tree(value: T, children: Iterable<ValuedTree<T>>) =
+            children
+                .toList()
+                .takeUnless(List<*>::isEmpty)
+                ?.let { Branch(value, it) }
+            ?: Leaf(value)
     }
 }
