@@ -12,6 +12,11 @@ import org.bytedeco.opencv.opencv_core.Mat
 import org.bytedeco.opencv.opencv_core.MatVector
 import org.bytedeco.opencv.opencv_core.Point
 import org.bytedeco.opencv.opencv_core.Scalar
+import org.mechdancer.algebra.function.vector.euclid
+import org.mechdancer.algebra.function.vector.minus
+import org.mechdancer.algebra.implement.vector.Vector2D
+import org.mechdancer.algebra.implement.vector.vector2DOf
+import kotlin.math.abs
 
 private const val minCount0 = (7 * 3 * 2 - 1) * 4
 private const val minCount1 = (7 * 2 - 1) * 4
@@ -40,8 +45,9 @@ internal fun process(mat: Mat) {
     // 筛选轮廓
     val begin = System.nanoTime()
     val candidates =
-        buildForest(hierarchy).asSequence()
+        buildForest(hierarchy)
             // 展平
+            .asSequence()
             .flatMap { it.map { i -> contours.get(i.toLong()) }.flattenAsSequence() }
             .ofType<Branch<Mat>>()
             // 外框轮廓特征
@@ -90,7 +96,7 @@ private fun Mat.show(title: String = "test") {
     waitKey()
 }
 
-private val hsvBlackL = Mat(0.0, 0.0, 96.0)
+private val hsvBlackL = Mat(0.0, 0.0, 144.0)
 private val hsvBlackH = Mat(180.0, 255.0, 255.0)
 
 // 二值化
@@ -134,12 +140,48 @@ private inline fun <reified U : Any>
     Iterable<*>.asTypedSequence() =
     mapNotNull { it as? U }
 
+// 向量叉乘，用于求平行四边形面积
+private infix fun Vector2D.cross(others: Vector2D): Double {
+    val (x0, y0) = this
+    val (x1, y1) = others
+    return x0 * y1 - x1 * y0
+}
+
+// 根据一条对角线求另一条对角线
+private fun List<Vector2D>.maxByArea(a: Int, c: Int): Pair<Int, Int> {
+    val b = (a + 1 until c)
+        .maxBy { b -> abs((this[a] - this[b]) cross (this[c] - this[b])) }!!
+    val d = ((0 until a) + (c + 1 until size))
+        .maxBy { d -> abs((this[a] - this[d]) cross (this[c] - this[d])) }!!
+    return b to d
+}
+
+// 针对轮廓的方形检测
 private fun rectangleOf(contour: Mat) {
+    // 规范化点序列
     val points =
         (0 until contour.rows()).map { i ->
             val ptr = contour.ptr(i, 0)
             val x = ptr.getInt(0)
-            val y = ptr.getInt(0)
-            x to y
+            val y = ptr.getInt(4)
+            vector2DOf(x, y)
         }
+    // 找到四个角点
+    val (a, c) = intArrayOf(0, 0).apply {
+        sequence {
+            while (true) {
+                yield(0 to 1)
+                yield(1 to 0)
+            }
+        }.first { (a, b) ->
+            null == points
+                .indices
+                .maxBy { points[it] euclid points[this[a]] }!!
+                .takeIf { this[b] != it }
+                ?.let { this[b] = it }
+        }
+        sort()
+    }
+    val (b, d) = points.maxByArea(a, c)
+    println(listOf(a, b, c, d).sorted())
 }
