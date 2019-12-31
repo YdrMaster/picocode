@@ -48,13 +48,5 @@ sealed class ValuedTree<T> {
                 .takeUnless(List<*>::isEmpty)
                 ?.let { Branch(value, it) }
             ?: Leaf(value)
-
-        /** 建树 */
-        fun <T> tree(value: T, children: Iterable<ValuedTree<T>>) =
-            children
-                .toList()
-                .takeUnless(List<*>::isEmpty)
-                ?.let { Branch(value, it) }
-            ?: Leaf(value)
     }
 }

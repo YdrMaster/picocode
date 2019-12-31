@@ -38,52 +38,31 @@ private val COLOR_B = Scalar(.0, 255.0, .0, .0)
 
 internal fun process(mat: Mat) {
     // TODO 需要进一步预处理，滤波？
+    val begin = System.nanoTime()
     // 找轮廓
     val contours = MatVector()
     val hierarchy = Mat()
     findContours(binary(mat), contours, hierarchy, RETR_TREE, CHAIN_APPROX_NONE)
-    // 筛选轮廓
-    val begin = System.nanoTime()
+    // 识别轮廓
     val candidates =
         buildForest(hierarchy)
             // 展平
             .asSequence()
             .flatMap { it.map { i -> contours.get(i.toLong()) }.flattenAsSequence() }
-            .ofType<Branch<Mat>>()
-            // 外框轮廓特征
-            .filter { (border, _) -> border.rows() >= minCount0 }
-            // 定位点轮廓特征
-            .mapNotNull { (border, outers) ->
-                // 外环特征
-                outers
-                    .asTypedSequence<Branch<Mat>>()
-                    .filter { it.checkRation(border, range0) }
-                    .mapNotNull { (outer, mediums) ->
-                        // 中环特征
-                        mediums
-                            .asTypedSequence<Branch<Mat>>()
-                            .singleOrNull { it.checkRation(outer, range1) }
-                            ?.let { (medium, inners) ->
-                                // 内环特征
-                                inners
-                                    .singleOrNull { it.checkRation(medium, range2) }
-                                    ?.value
-                                    ?.let { tree(outer, tree(medium, tree(it))) }
-                            }
-                    }
-                    .takeIf { it.size >= 3 }
-                    ?.let { tree(border, it) }
-            }
+            // 筛选
+            .filterByStruct()
+            .onEach { (border, _) -> rectangleOf(border) }
             .toList()
     println(1E9 / (System.nanoTime() - begin))
+    // 画图
     candidates
         .asSequence()
         .flatMap { it.flattenAsSequence() }
         .forEach { drawContours(mat, MatVector(it.value), -1, COLOR_R, 2, 0, Mat(), Int.MAX_VALUE, Point()) }
-    candidates
-        .forEach { rectangleOf(it.value) }
     mat.show()
 }
+
+// 显示
 
 private var last = 0L
 private fun Mat.show(title: String = "test") {
@@ -93,13 +72,13 @@ private fun Mat.show(title: String = "test") {
         imwrite("test/$now.jpg", this)
     }
     imshow(title, this)
-    waitKey()
+    waitKey(1)
 }
+
+// 二值化
 
 private val hsvBlackL = Mat(0.0, 0.0, 144.0)
 private val hsvBlackH = Mat(180.0, 255.0, 255.0)
-
-// 二值化
 private fun binary(src: Mat) =
     Mat().also { dst ->
         val hsv = Mat()
@@ -107,6 +86,34 @@ private fun binary(src: Mat) =
         opencv_core.inRange(hsv, hsvBlackL, hsvBlackH, dst)
         dst.show("binary")
     }
+
+// 筛选轮廓
+private fun Sequence<ValuedTree<Mat>>.filterByStruct() =
+    ofType<Branch<Mat>>()
+        // 外框轮廓特征
+        .filter { (border, _) -> border.rows() >= minCount0 }
+        // 定位点轮廓特征
+        .mapNotNull { (border, outers) ->
+            // 外环特征
+            outers
+                .asTypedSequence<Branch<Mat>>()
+                .filter { it.checkRation(border, range0) }
+                .mapNotNull { (outer, mediums) ->
+                    // 中环特征
+                    mediums
+                        .asTypedSequence<Branch<Mat>>()
+                        .singleOrNull { it.checkRation(outer, range1) }
+                        ?.let { (medium, inners) ->
+                            // 内环特征
+                            inners
+                                .singleOrNull { it.checkRation(medium, range2) }
+                                ?.value
+                                ?.let { tree(outer, tree(medium, tree(it))) }
+                        }
+                }
+                .takeIf { it.size >= 3 }
+                ?.let { Branch(border, it) }
+        }
 
 // 从四向链表构造树
 private fun buildForest(hierarchy: Mat): List<ValuedTree<Int>> {
@@ -140,22 +147,6 @@ private inline fun <reified U : Any>
     Iterable<*>.asTypedSequence() =
     mapNotNull { it as? U }
 
-// 向量叉乘，用于求平行四边形面积
-private infix fun Vector2D.cross(others: Vector2D): Double {
-    val (x0, y0) = this
-    val (x1, y1) = others
-    return x0 * y1 - x1 * y0
-}
-
-// 根据一条对角线求另一条对角线
-private fun List<Vector2D>.maxByArea(a: Int, c: Int): Pair<Int, Int> {
-    val b = (a + 1 until c)
-        .maxBy { b -> abs((this[a] - this[b]) cross (this[c] - this[b])) }!!
-    val d = ((0 until a) + (c + 1 until size))
-        .maxBy { d -> abs((this[a] - this[d]) cross (this[c] - this[d])) }!!
-    return b to d
-}
-
 // 针对轮廓的方形检测
 private fun rectangleOf(contour: Mat) {
     // 规范化点序列
@@ -184,4 +175,20 @@ private fun rectangleOf(contour: Mat) {
     }
     val (b, d) = points.maxByArea(a, c)
     println(listOf(a, b, c, d).sorted())
+}
+
+// 向量叉乘，用于求平行四边形面积
+private infix fun Vector2D.cross(others: Vector2D): Double {
+    val (x0, y0) = this
+    val (x1, y1) = others
+    return x0 * y1 - x1 * y0
+}
+
+// 根据一条对角线求另一条对角线
+private fun List<Vector2D>.maxByArea(a: Int, c: Int): Pair<Int, Int> {
+    val b = (a + 1 until c)
+        .maxBy { b -> abs((this[a] - this[b]) cross (this[c] - this[b])) }!!
+    val d = ((0 until a) + (c + 1 until size))
+        .maxBy { d -> abs((this[a] - this[d]) cross (this[c] - this[d])) }!!
+    return b to d
 }

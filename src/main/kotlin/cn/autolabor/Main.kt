@@ -25,7 +25,7 @@ fun main() = runBlocking<Unit>(Dispatchers.Default) {
             }.use { camera ->
                 // 处理图像
                 actor<Mat>(capacity = 1) {
-                    for (rgb in this) PicoProcess.process(rgb)
+                    for (rgb in this) process(rgb)
                 }.apply {
                     waiting.cancelAndJoin()
                     println()
