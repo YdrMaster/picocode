@@ -15,7 +15,7 @@ import org.bytedeco.opencv.opencv_core.Scalar
 import org.mechdancer.algebra.function.vector.euclid
 import org.mechdancer.algebra.function.vector.minus
 import org.mechdancer.algebra.implement.vector.Vector2D
-import org.mechdancer.algebra.implement.vector.vector2DOf
+import org.mechdancer.algebra.implement.vector.vector2D
 import kotlin.math.abs
 
 private const val minCount0 = (7 * 3 * 2 - 1) * 4
@@ -155,7 +155,7 @@ private fun rectangleOf(contour: Mat) {
             val ptr = contour.ptr(i, 0)
             val x = ptr.getInt(0)
             val y = ptr.getInt(4)
-            vector2DOf(x, y)
+            vector2D(x, y)
         }
     // 找到四个角点
     val (a, c) = intArrayOf(0, 0).apply {

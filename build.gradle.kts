@@ -1,16 +1,5 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-buildscript {
-    repositories {
-        mavenCentral()
-        jcenter()
-        maven("https://maven.aliyun.com/repository/central")
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/gradle-plugin")
-        maven("https://maven.aliyun.com/repository/jcenter")
-    }
-}
-
 plugins {
     kotlin("jvm") version "1.3.61"
 }
@@ -23,11 +12,15 @@ allprojects {
     repositories {
         mavenCentral()
         jcenter()
+        maven("https://maven.aliyun.com/repository/central")
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
+        maven("https://maven.aliyun.com/repository/jcenter")
     }
     dependencies {
         // 自动依赖 kotlin 标准库
         implementation(kotlin("stdlib-jdk8"))
-        implementation("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.1.1")
+        implementation("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.3.3")
         // 单元测试
         testImplementation("junit", "junit", "+")
         testImplementation(kotlin("test-junit"))
@@ -53,7 +46,6 @@ allprojects {
 
 // 主项目依赖项
 dependencies {
-    implementation("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.3.3")
     implementation(fileTree("libs"))
     implementation("net.java.dev.jna", "jna", "+")
     implementation("org.bytedeco", "opencv-platform", "+")
